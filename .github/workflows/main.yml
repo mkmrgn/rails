@@ -22,16 +22,20 @@ jobs:
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+
       - name: Checkout
         uses: actions/checkout@v3
 
-      # Runs a single command using the runners shell
       - name: Checkout config repo
         uses: actions/checkout@v3
         with:
           repository: mkmrgn/buildkite-config
           path: buildkite-config
           
+      - name: Move config files around
+        run: mv buildkite-config/* .
+        
       - name: What's going on?
         run: ls -lah
+        
+      - name: 
