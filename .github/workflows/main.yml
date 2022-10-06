@@ -30,11 +30,8 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: mkmrgn/buildkite-config
-          path: buildkite-config
+          path: .buildkite
           
-      - name: Move config files around
-        run: mv buildkite-config/* .
-        
       - name: Configure AWS creds
         uses: aws-actions/configure-aws-credentials@v1
         with: 
