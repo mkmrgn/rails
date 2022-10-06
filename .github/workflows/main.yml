@@ -35,7 +35,24 @@ jobs:
       - name: Move config files around
         run: mv buildkite-config/* .
         
-      - name: What's going on?
-        run: ls -lah
+      - name: Configure AWS creds
+        uses: aws-actions/configure-aws-credentials@v1
+        with: 
+          aws-secret-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
         
-      - name: 
+      - name: Build and push to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: builds
+          IMAGE_TAG: 1
+        run:
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+        
