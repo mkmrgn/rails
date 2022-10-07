@@ -25,6 +25,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v3
+        with:
+          ref: v7.0.2
 
       - name: Checkout config repo
         uses: actions/checkout@v3
