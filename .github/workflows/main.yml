@@ -30,6 +30,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: mkmrgn/buildkite-config
+          ref: gha_test
           path: .buildkite
           
       - name: Configure AWS creds
@@ -43,10 +44,12 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
         
-      - name: debug
+      - name: Bad hack to get this stupid thing working
         run: |
-          ls -lah
-          ls -lah .buildkite
+          cp rails.gemspec .buildkite/.
+          cp Gemfile .buildkite/.
+          cp Gemfile.lock .buildkite/.
+          cp RAILS_VERSION .buildkite/.
         
       - name: Build and push to ECR
         env:
