@@ -48,6 +48,7 @@ module ActiveRecord
       end
 
       def defined_for?(columns = nil, name: nil, unique: nil, valid: nil, **options)
+        columns = options[:column] if columns.nil?
         (columns.nil? || Array(self.columns) == Array(columns).map(&:to_s)) &&
           (name.nil? || self.name == name.to_s) &&
           (unique.nil? || self.unique == unique) &&
@@ -513,6 +514,10 @@ module ActiveRecord
       #   t.timestamps null: false
       def timestamps(**options)
         options[:null] = false if options[:null].nil?
+
+        if !options.key?(:precision) && @conn.supports_datetime_with_precision?
+          options[:precision] = 6
+        end
 
         column(:created_at, :datetime, **options)
         column(:updated_at, :datetime, **options)
