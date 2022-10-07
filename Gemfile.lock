@@ -17,7 +17,7 @@ PATH
       websocket-driver (>= 0.6.1)
       zeitwerk (~> 2.6)
     actionmailbox (7.1.0.alpha)
-      actionpack (= 7.1.0.alpha)
+      actionpack (= 7.0.4)
       activejob (= 7.1.0.alpha)
       activerecord (= 7.1.0.alpha)
       activestorage (= 7.1.0.alpha)
@@ -27,7 +27,7 @@ PATH
       net-pop
       net-smtp
     actionmailer (7.1.0.alpha)
-      actionpack (= 7.1.0.alpha)
+      actionpack (= 7.0.4)
       actionview (= 7.1.0.alpha)
       activejob (= 7.1.0.alpha)
       activesupport (= 7.1.0.alpha)
@@ -36,7 +36,7 @@ PATH
       net-pop
       net-smtp
       rails-dom-testing (~> 2.0)
-    actionpack (7.1.0.alpha)
+    actionpack (7.0.4)
       actionview (= 7.1.0.alpha)
       activesupport (= 7.1.0.alpha)
       rack (~> 2.0, >= 2.2.4)
