@@ -44,8 +44,12 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
         
-      - name: Move rails gemspec file to allow Docker build to run
-        run: mv rails.gemspec .buildkite/.
+      - name: Bad hack to get this stupid thing working
+        run: |
+          cp rails.gemspec .buildkite/.
+          cp Gemfile .buildkite/.
+          cp Gemfile.lock .buildkite/.
+          cp RAILS_VERSION .buildkite/.
         
       - name: Build and push to ECR
         env:
