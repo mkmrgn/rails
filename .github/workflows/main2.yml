@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: mkmrgn/buildkite-config
-          #ref: gha_test
+          ref: gha_test
           path: .buildkite
           
       - name: Configure AWS creds
