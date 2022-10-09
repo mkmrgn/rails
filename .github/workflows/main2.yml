@@ -12,7 +12,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -35,13 +34,6 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-        
-      #- name: Bad hack to get this stupid thing working
-      #  run: |
-      #    cp rails.gemspec .buildkite/.
-      #    cp Gemfile .buildkite/.
-      #    cp Gemfile.lock .buildkite/.
-      #    cp RAILS_VERSION .buildkite/.
         
       - name: Attempt to pull cache from ECR
         env:
@@ -72,7 +64,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -109,7 +100,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -146,7 +136,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -183,7 +172,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -220,7 +208,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -257,7 +244,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -290,3 +276,47 @@ jobs:
           docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 up -d --scale default=0 default
           docker-compose -f .buildkite/docker-compose.yml run --name GHAtestbuild123 --rm default runner actionview 'rake test'
         
+  Railties_tests:
+    runs-on: ubuntu-latest
+    needs: build
+
+    strategy:
+      fail-fast: false
+      matrix:
+        ci_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ci_total: [12]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: v7.0.2
+
+      - name: Checkout config repo
+        uses: actions/checkout@v3
+        with:
+          repository: mkmrgn/buildkite-config
+          path: .buildkite
+          
+      - name: Configure AWS creds
+        uses: aws-actions/configure-aws-credentials@v1
+        with: 
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: ActionView tests
+        env:
+          RUBY_IMAGE: ruby:3.1
+          IMAGE_NAME: 988114616026.dkr.ecr.us-west-2.amazonaws.com/builds:GHA_test
+          BUILDKITE_PARALLEL_JOB: ${{ matrix.ci_index }}
+          BUILDKITE_PARALLEL_JOB_COUNT: ${{ matrix.ci_total }}
+        run: |
+          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 pull default
+          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 build --pull default
+          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 up -d --scale default=0 default
+          docker-compose -f .buildkite/docker-compose.yml run --name GHAtestbuild123 --rm default runner railties 'rake test'
