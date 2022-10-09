@@ -68,7 +68,7 @@ jobs:
           ECR_REPOSITORY: builds
           IMAGE_TAG: GHA_test
           RUBY_IMAGE: ruby:3.1
-        run: docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 build --pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        run: docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 build
 
       - name: Push to ECR
         env:
