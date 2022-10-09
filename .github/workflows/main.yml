@@ -69,6 +69,39 @@ jobs:
     needs: build
     steps:
 
-    - name: Actioncable tests
-      run: docker-compose -f .buildkite/docker-compose.yml run --name GHAtestbuild123 --rm postgresdb runner actioncable 'rake test'
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: v7.0.2
+
+      - name: Checkout config repo
+        uses: actions/checkout@v3
+        with:
+          repository: mkmrgn/buildkite-config
+          ref: gha_test
+          path: .buildkite
+          
+      - name: Configure AWS creds
+        uses: aws-actions/configure-aws-credentials@v1
+        with: 
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        
+      - name: Bad hack to get this stupid thing working
+        run: |
+          cp rails.gemspec .buildkite/.
+          cp Gemfile .buildkite/.
+          cp Gemfile.lock .buildkite/.
+          cp RAILS_VERSION .buildkite/.
+
+      - name: Actioncable tests
+        env:
+          IMAGE_TAG: 1
+          RUBY_IMAGE: ruby:3.1
+        run: docker-compose -f .buildkite/docker-compose.yml run --name GHAtestbuild123 --rm postgresdb runner actioncable 'rake test'
         
