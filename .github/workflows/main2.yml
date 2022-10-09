@@ -1,0 +1,109 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI2
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: v7.0.2
+
+      - name: Checkout config repo
+        uses: actions/checkout@v3
+        with:
+          repository: mkmrgn/buildkite-config
+          #ref: gha_test
+          path: .buildkite
+          
+      - name: Configure AWS creds
+        uses: aws-actions/configure-aws-credentials@v1
+        with: 
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        
+      #- name: Bad hack to get this stupid thing working
+      #  run: |
+      #    cp rails.gemspec .buildkite/.
+      #    cp Gemfile .buildkite/.
+      #    cp Gemfile.lock .buildkite/.
+      #    cp RAILS_VERSION .buildkite/.
+        
+      - name: Build and push to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: builds
+          IMAGE_TAG: GHA_test
+          RUBY_IMAGE: ruby:3.1
+        run: |
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 -f docker-compose.buildkite-80-override.yml build --pull base
+          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 -f docker-compose.buildkite-80-override.yml push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+  tests:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: v7.0.2
+
+      - name: Checkout config repo
+        uses: actions/checkout@v3
+        with:
+          repository: mkmrgn/buildkite-config
+          ref: gha_test
+          path: .buildkite
+          
+      - name: Configure AWS creds
+        uses: aws-actions/configure-aws-credentials@v1
+        with: 
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        
+      - name: Bad hack to get this stupid thing working
+        run: |
+          cp rails.gemspec .buildkite/.
+          cp Gemfile .buildkite/.
+          cp Gemfile.lock .buildkite/.
+          cp RAILS_VERSION .buildkite/.
+      - name: Actioncable tests
+        env:
+          RUBY_IMAGE: ruby:3.1
+          IMAGE_NAME: 988114616026.dkr.ecr.us-west-2.amazonaws.com/builds:GHA_test
+        run: |
+          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 pull postgresdb
+          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 build --pull postgresdb
+          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 up -d --scale postgresdb=0 postgresdb
+          docker-compose -f .buildkite/docker-compose.yml run --name GHAtestbuild123 --rm postgresdb runner actioncable 'rake test'
