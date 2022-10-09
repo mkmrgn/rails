@@ -142,7 +142,7 @@ jobs:
           docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 up -d --scale default=0 default
           docker-compose -f .buildkite/docker-compose.yml run --name GHAtestbuild123 --rm default runner actionmailbox 'rake test'
           
-    ActionMailer_tests:
+  ActionMailer_tests:
     runs-on: ubuntu-latest
     needs: build
     steps:
@@ -179,7 +179,7 @@ jobs:
           docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 up -d --scale default=0 default
           docker-compose -f .buildkite/docker-compose.yml run --name GHAtestbuild123 --rm default runner actionmailer 'rake test'
           
-    ActionPack_tests:
+  ActionPack_tests:
     runs-on: ubuntu-latest
     needs: build
     steps:
@@ -216,7 +216,7 @@ jobs:
           docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 up -d --scale default=0 default
           docker-compose -f .buildkite/docker-compose.yml run --name GHAtestbuild123 --rm default runner actionpack 'rake test'
           
-    ActionText_tests:
+  ActionText_tests:
     runs-on: ubuntu-latest
     needs: build
     steps:
@@ -253,7 +253,7 @@ jobs:
           docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 up -d --scale default=0 default
           docker-compose -f .buildkite/docker-compose.yml run --name GHAtestbuild123 --rm default runner actiontext 'rake test'
           
-    ActionView_tests:
+  ActionView_tests:
     runs-on: ubuntu-latest
     needs: build
     steps:
