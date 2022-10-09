@@ -61,8 +61,8 @@ jobs:
           RUBY_IMAGE: ruby:3.1
         run: |
           docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 -f docker-compose.buildkite-80-override.yml build --pull base
-          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 -f docker-compose.buildkite-80-override.yml push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 build --pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
   tests:
     runs-on: ubuntu-latest
