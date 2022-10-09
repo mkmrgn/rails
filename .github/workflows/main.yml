@@ -60,6 +60,9 @@ jobs:
           IMAGE_TAG: GHA_test
           RUBY_IMAGE: ruby:3.1
         run: |
+          # attempt to pull from ECR cache to speed up testing
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # build the things
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .buildkite/
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
