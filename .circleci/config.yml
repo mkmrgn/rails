@@ -15,8 +15,11 @@ jobs:
     steps:
       - checkout
       - run:
-          name: "Hello, world!"
-          command: "echo Hello, World!"
+          name: "Checkout second repo"
+          command: "git clone git@github.com:mkmrgn/buildkite-config.git ~/.buildkite"
+      - run:
+          name: "something"
+          command: "ls"
 
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows
