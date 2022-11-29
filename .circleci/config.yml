@@ -20,7 +20,7 @@ jobs:
           command: "git clone git@github.com:mkmrgn/buildkite-config.git ~/.buildkite"
       - run:
           name: "Docker build image"
-          command: "docker-compose -f .buildkite/docker-compose.yml -p GHAtestbuild123 -f .buildkite/gha-docker-compose.yml build --pull base"
+          command: "docker-compose -f .buildkite/docker-compose.yml -f .buildkite/gha-docker-compose.yml build --pull base"
 
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows
