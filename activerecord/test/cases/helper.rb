@@ -4,6 +4,9 @@ require "config"
 
 require "stringio"
 
+require "buildkite/test_collector"
+Buildkite::TestCollector.configure(hook: :minitest)
+
 require "active_record"
 require "cases/test_case"
 require "active_support/dependencies"

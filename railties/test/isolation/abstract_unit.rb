@@ -20,6 +20,9 @@ require "active_support/testing/method_call_assertions"
 require "active_support/test_case"
 require "minitest/retry"
 
+require "buildkite/test_collector"
+Buildkite::TestCollector.configure(hook: :minitest)
+
 if ENV["BUILDKITE"]
   Minitest::Retry.use!(verbose: false, retry_count: 1)
 end
