@@ -13,6 +13,8 @@ require "active_support/testing/autorun"
 require "active_support/configuration_file"
 require "active_storage/service/mirror_service"
 require "image_processing/mini_magick"
+require "buildkite/test_collector"
+Buildkite::TestCollector.configure(hook: :minitest)
 
 require "active_job"
 ActiveJob::Base.queue_adapter = :test
