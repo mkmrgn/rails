@@ -17,7 +17,7 @@ jobs:
       - checkout
       - run:
           name: "Checkout second repo"
-          command: "git clone git@github.com:mkmrgn/buildkite-config.git ~/.buildkite"
+          command: "git clone git@github.com:mkmrgn/buildkite-config.git ~/project/.buildkite"
       - run:
           name: "Docker build image"
           command: "docker-compose -f .buildkite/docker-compose.yml -f .buildkite/gha-docker-compose.yml build --pull base"
