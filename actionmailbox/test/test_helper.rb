@@ -12,6 +12,9 @@ require "webmock/minitest"
 require "rails/test_unit/reporter"
 Rails::TestUnitReporter.executable = "bin/test"
 
+require "buildkite/test_collector"
+Buildkite::TestCollector.configure(hook: :minitest)
+
 if ActiveSupport::TestCase.respond_to?(:fixture_path=)
   ActiveSupport::TestCase.fixture_path = File.expand_path("fixtures", __dir__)
   ActionDispatch::IntegrationTest.fixture_path = ActiveSupport::TestCase.fixture_path

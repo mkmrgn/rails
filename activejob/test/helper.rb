@@ -4,6 +4,9 @@ require "active_support/testing/strict_warnings"
 require "active_job"
 require "support/job_buffer"
 
+require "buildkite/test_collector"
+Buildkite::TestCollector.configure(hook: :minitest)
+
 GlobalID.app = "aj"
 
 @adapter = ENV["AJ_ADAPTER"] ||= "inline"
