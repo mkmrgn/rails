@@ -10,9 +10,6 @@ require "rails/test_help"
 require "rails/test_unit/reporter"
 Rails::TestUnitReporter.executable = "bin/test"
 
-require "buildkite/test_collector"
-Buildkite::TestCollector.configure(hook: :minitest)
-
 # Disable available locale checks to allow to add locale after initialized.
 I18n.enforce_available_locales = false
 
