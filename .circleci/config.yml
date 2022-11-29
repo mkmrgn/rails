@@ -16,6 +16,9 @@ jobs:
     steps:
       - checkout
       - run:
+          name: "install git"
+          command: "apt-get install -y git"
+      - run:
           name: "Checkout second repo"
           command: "git clone git@github.com:mkmrgn/buildkite-config.git ~/.buildkite"
       - run:
