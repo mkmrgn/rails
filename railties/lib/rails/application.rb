@@ -231,7 +231,7 @@ module Rails
     # via <tt>deprecators[name] = deprecator</tt>.
     def deprecators
       @deprecators ||= ActiveSupport::Deprecation::Deprecators.new.tap do |deprecators|
-        deprecators[:rails] = ActiveSupport::Deprecation.instance
+        deprecators[:rails] = Rails.deprecator
       end
     end
 
@@ -301,7 +301,7 @@ module Rails
     # will be used by middlewares and engines to configure themselves.
     def env_config
       @app_env_config ||= super.merge(
-          "action_dispatch.parameter_filter" => config.filter_parameters,
+          "action_dispatch.parameter_filter" => filter_parameters,
           "action_dispatch.redirect_filter" => config.filter_redirect,
           "action_dispatch.secret_key_base" => secret_key_base,
           "action_dispatch.show_exceptions" => config.action_dispatch.show_exceptions,
@@ -674,6 +674,14 @@ module Rails
 
       def coerce_same_site_protection(protection)
         protection.respond_to?(:call) ? protection : proc { protection }
+      end
+
+      def filter_parameters
+        if config.precompile_filter_parameters
+          ActiveSupport::ParameterFilter.precompile_filters(config.filter_parameters)
+        else
+          config.filter_parameters
+        end
       end
   end
 end

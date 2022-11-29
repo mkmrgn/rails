@@ -1,3 +1,30 @@
+*   Add `config.precompile_filter_parameters`, which enables precompilation of
+    `config.filter_parameters` using `ActiveSupport::ParameterFilter.precompile_filters`.
+    Precompilation can improve filtering performance, depending on the quantity
+    and types of filters.
+
+    `config.precompile_filter_parameters` defaults to `true` for
+    `config.load_defaults 7.1` and above.
+
+    *Jonathan Hefner*
+
+*   Add `after_routes_loaded` hook to `Rails::Railtie::Configuration` for
+    engines to add a hook to be called after application routes have been
+    loaded.
+
+    ```ruby
+    MyEngine.config.after_routes_loaded do
+      # code that must happen after routes have been loaded
+    end
+    ```
+
+    *Chris Salzberg*
+
+*   Send 303 See Other status code back for the destroy action on newly generated
+    scaffold controllers.
+
+    *Tony Drake*
+
 *   Add `Rails.application.deprecators` as a central point to manage deprecators
     for an application.
 
@@ -39,7 +66,7 @@
     This patch moves #find_cmd_and_exec to the adapter and exposes a new API to
     lookup the adapter class without instantiating it.
 
-    *Gannon McGibbon, Paarth Madan*
+    *Gannon McGibbon*, *Paarth Madan*
 
 *   Add `Rails.application.message_verifiers` as a central point to configure
     and create message verifiers for an application.

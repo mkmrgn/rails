@@ -311,6 +311,7 @@ module ActiveRecord
 
         @max_identifier_length = nil
         @type_map = nil
+        @raw_connection = nil
 
         @use_insert_returning = @config.key?(:insert_returning) ? self.class.type_cast_config_to_boolean(@config[:insert_returning]) : true
       end
@@ -1031,22 +1032,24 @@ module ActiveRecord
 
         def can_perform_case_insensitive_comparison_for?(column)
           @case_insensitive_cache ||= {}
-          @case_insensitive_cache[column.sql_type] ||= begin
-            sql = <<~SQL
-              SELECT exists(
-                SELECT * FROM pg_proc
-                WHERE proname = 'lower'
-                  AND proargtypes = ARRAY[#{quote column.sql_type}::regtype]::oidvector
-              ) OR exists(
-                SELECT * FROM pg_proc
-                INNER JOIN pg_cast
-                  ON ARRAY[casttarget]::oidvector = proargtypes
-                WHERE proname = 'lower'
-                  AND castsource = #{quote column.sql_type}::regtype
-              )
-            SQL
-            execute_and_clear(sql, "SCHEMA", [], allow_retry: true, uses_transaction: false) do |result|
-              result.getvalue(0, 0)
+          @case_insensitive_cache.fetch(column.sql_type) do
+            @case_insensitive_cache[column.sql_type] = begin
+              sql = <<~SQL
+                SELECT exists(
+                  SELECT * FROM pg_proc
+                  WHERE proname = 'lower'
+                    AND proargtypes = ARRAY[#{quote column.sql_type}::regtype]::oidvector
+                ) OR exists(
+                  SELECT * FROM pg_proc
+                  INNER JOIN pg_cast
+                    ON ARRAY[casttarget]::oidvector = proargtypes
+                  WHERE proname = 'lower'
+                    AND castsource = #{quote column.sql_type}::regtype
+                )
+              SQL
+              execute_and_clear(sql, "SCHEMA", [], allow_retry: true, uses_transaction: false) do |result|
+                result.getvalue(0, 0)
+              end
             end
           end
         end

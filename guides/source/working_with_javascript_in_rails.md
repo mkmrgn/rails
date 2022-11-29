@@ -17,7 +17,7 @@ your JavaScript.
 
 --------------------------------------------------------------------------------
 
-Import maps
+Import Maps
 -----------
 
 [Import maps](https://github.com/rails/importmap-rails) let you import JavaScript modules using
@@ -289,4 +289,10 @@ This generates:
 
 ```html
 <a href="..." data-turbo-confirm="Are you sure?" data-turbo-method="delete">Delete post</a>
+```
+
+In case of buttons the `data-turbo-confirm` attribute must be associated to the generated form as in this example:
+
+```erb
+<%= button_to "Delete post", post, method: :delete, form: { data: { turbo_confirm: "Are you sure?" } } %>
 ```

@@ -57,6 +57,36 @@ module ActiveRecord
         end
       end
 
+      # Builds an object (or multiple objects) and returns either the built object or a list of built
+      # objects.
+      #
+      # The +attributes+ parameter can be either a Hash or an Array of Hashes. These Hashes describe the
+      # attributes on the objects that are to be built.
+      #
+      # ==== Examples
+      #   # Build a single new object
+      #   User.build(first_name: 'Jamie')
+      #
+      #   # Build an Array of new objects
+      #   User.build([{ first_name: 'Jamie' }, { first_name: 'Jeremy' }])
+      #
+      #   # Build a single object and pass it into a block to set other attributes.
+      #   User.build(first_name: 'Jamie') do |u|
+      #     u.is_admin = false
+      #   end
+      #
+      #   # Building an Array of new objects using a block, where the block is executed for each object:
+      #   User.build([{ first_name: 'Jamie' }, { first_name: 'Jeremy' }]) do |u|
+      #     u.is_admin = false
+      #   end
+      def build(attributes = nil, &block)
+        if attributes.is_a?(Array)
+          attributes.collect { |attr| build(attr, &block) }
+        else
+          new(attributes, &block)
+        end
+      end
+
       # Inserts a single record into the database in a single SQL INSERT
       # statement. It does not instantiate any models nor does it trigger
       # Active Record callbacks or validations. Though passed values
@@ -425,6 +455,43 @@ module ActiveRecord
         end
       end
 
+      # Accepts a list of attribute names to be used in the WHERE clause
+      # of SELECT / UPDATE / DELETE queries.
+      #
+      #   class Developer < ActiveRecord::Base
+      #     query_constraints :company_id, :id
+      #   end
+      #
+      #   developer = Developer.first
+      #   developer.inspect # => #<Developer id: 1, company_id: 1, ...>
+      #
+      #   developer.update!(name: "Nikita")
+      #   # => UPDATE "developers" SET "name" = 'Nikita' WHERE "developers"."company_id" = 1 AND "developers"."id" = 1
+      #
+      #   It is possible to update attribute used in the query_by clause:
+      #   developer.update!(company_id: 2)
+      #   # => UPDATE "developers" SET "company_id" = 2 WHERE "developers"."company_id" = 1 AND "developers"."id" = 1
+      #
+      #   developer.name = "Bob"
+      #   developer.save!
+      #   # => UPDATE "developers" SET "name" = 'Bob' WHERE "developers"."company_id" = 1 AND "developers"."id" = 1
+      #
+      #   developer.destroy!
+      #   # => DELETE FROM "developers" WHERE "developers"."company_id" = 1 AND "developers"."id" = 1
+      #
+      #   developer.delete
+      #   # => DELETE FROM "developers" WHERE "developers"."company_id" = 1 AND "developers"."id" = 1
+      #
+      #   developer.reload
+      #   # => SELECT "developers".* FROM "developers" WHERE "developers"."company_id" = 1 AND "developers"."id" = 1 LIMIT 1
+      def query_constraints(*columns_list)
+        @_query_constraints_list = columns_list.map(&:to_s)
+      end
+
+      def query_constraints_list # :nodoc:
+        @_query_constraints_list ||= query_constraints_list_fallback
+      end
+
       # Destroy an object (or multiple objects) that has the given id. The object is instantiated first,
       # therefore all callbacks and filters are fired off before the object is deleted. This method is
       # less efficient than #delete but allows cleanup methods and other actions to be run.
@@ -555,6 +622,17 @@ module ActiveRecord
           default_where_clause = default_scoped(all_queries: true).where_clause
           default_where_clause.ast unless default_where_clause.empty?
         end
+
+        # This is a fallback method that is used to determine the query_constraints_list
+        # for cases when the model is not explicitly configured with query_constraints.
+        # For a base class, just use the primary key.
+        # For a child class, use the primary key unless primary key was overridden.
+        # If the child's primary key was not overridden, use the parent's query_constraints_list.
+        def query_constraints_list_fallback # :nodoc:
+          return Array(primary_key) if base_class? || primary_key != base_class.primary_key
+
+          base_class.query_constraints_list
+        end
     end
 
     # Returns true if this object hasn't been saved yet -- that is, a record
@@ -676,11 +754,7 @@ module ActiveRecord
     def destroy
       _raise_readonly_record_error if readonly?
       destroy_associations
-      @_trigger_destroy_callback = if persisted?
-        destroy_row > 0
-      else
-        true
-      end
+      @_trigger_destroy_callback = persisted? && destroy_row > 0
       @destroyed = true
       freeze
     end
@@ -838,7 +912,7 @@ module ActiveRecord
         verify_readonly_attribute(name) || name
       end
 
-      update_constraints = _primary_key_constraints_hash
+      update_constraints = _query_constraints_hash
       attributes = attributes.each_with_object({}) do |(k, v), h|
         h[k] = @attributes.write_cast_value(k, v)
         clear_attribute_change(k)
@@ -1044,9 +1118,15 @@ module ActiveRecord
 
     def _find_record(options)
       if options && options[:lock]
-        self.class.preload(strict_loaded_associations).lock(options[:lock]).find(id)
+        self.class.preload(strict_loaded_associations).lock(options[:lock]).find_by!(_in_memory_query_constraints_hash)
       else
-        self.class.preload(strict_loaded_associations).find(id)
+        self.class.preload(strict_loaded_associations).find_by!(_in_memory_query_constraints_hash)
+      end
+    end
+
+    def _in_memory_query_constraints_hash
+      self.class.query_constraints_list.index_with do |column_name|
+        attribute(column_name)
       end
     end
 
@@ -1055,8 +1135,10 @@ module ActiveRecord
         (self.class.default_scopes?(all_queries: true) || self.class.global_current_scope)
     end
 
-    def _primary_key_constraints_hash
-      { @primary_key => id_in_database }
+    def _query_constraints_hash
+      self.class.query_constraints_list.index_with do |column_name|
+        attribute_in_database(column_name)
+      end
     end
 
     # A hook to be overridden by association modules.
@@ -1068,7 +1150,7 @@ module ActiveRecord
     end
 
     def _delete_row
-      self.class._delete_record(_primary_key_constraints_hash)
+      self.class._delete_record(_query_constraints_hash)
     end
 
     def _touch_row(attribute_names, time)
@@ -1084,7 +1166,7 @@ module ActiveRecord
     def _update_row(attribute_names, attempted_action = "update")
       self.class._update_record(
         attributes_with_values(attribute_names),
-        _primary_key_constraints_hash
+        _query_constraints_hash
       )
     end
 
@@ -1155,12 +1237,6 @@ module ActiveRecord
         Cannot touch on a new or destroyed record object. Consider using
         persisted?, new_record?, or destroyed? before touching.
       MSG
-    end
-
-    # The name of the method used to touch a +belongs_to+ association when the
-    # +:touch+ option is used.
-    def belongs_to_touch_method
-      :touch
     end
   end
 end

@@ -30,6 +30,7 @@ require "arel"
 require "yaml"
 
 require "active_record/version"
+require "active_record/deprecator"
 require "active_model/attribute_set"
 require "active_record/errors"
 
@@ -267,6 +268,12 @@ module ActiveRecord
   singleton_class.attr_accessor :maintain_test_schema
   self.maintain_test_schema = nil
 
+  singleton_class.attr_accessor :raise_on_assign_to_attr_readonly
+  self.raise_on_assign_to_attr_readonly = false
+
+  singleton_class.attr_accessor :belongs_to_required_validates_foreign_key
+  self.belongs_to_required_validates_foreign_key = true
+
   ##
   # :singleton-method:
   # Specify a threshold for the size of query result sets. If the number of
@@ -337,14 +344,14 @@ module ActiveRecord
   self.dump_schemas = :schema_search_path
 
   def self.suppress_multiple_database_warning
-    ActiveSupport::Deprecation.warn(<<-MSG.squish)
+    ActiveRecord.deprecator.warn(<<-MSG.squish)
       config.active_record.suppress_multiple_database_warning is deprecated and will be removed in Rails 7.2.
       It no longer has any effect and should be removed from the configuration file.
     MSG
   end
 
   def self.suppress_multiple_database_warning=(value)
-    ActiveSupport::Deprecation.warn(<<-MSG.squish)
+    ActiveRecord.deprecator.warn(<<-MSG.squish)
       config.active_record.suppress_multiple_database_warning= is deprecated and will be removed in Rails 7.2.
       It no longer has any effect and should be removed from the configuration file.
     MSG

@@ -189,9 +189,10 @@ class CookieStoreTest < ActionDispatch::IntegrationTest
 
   def test_close_raises_when_data_overflows
     with_test_route_set do
-      assert_raise(ActionDispatch::Cookies::CookieOverflow) {
+      error = assert_raise(ActionDispatch::Cookies::CookieOverflow) {
         get "/raise_data_overflow"
       }
+      assert_equal "_myapp_session cookie overflowed with size 5612 bytes", error.message
     end
   end
 
@@ -423,7 +424,7 @@ class CookieStoreTest < ActionDispatch::IntegrationTest
     def with_test_route_set(options = {})
       with_routing do |set|
         set.draw do
-          ActiveSupport::Deprecation.silence do
+          ActionDispatch.deprecator.silence do
             get ":action", to: ::CookieStoreTest::TestController
           end
         end

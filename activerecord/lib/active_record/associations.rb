@@ -586,8 +586,10 @@ module ActiveRecord
       #     has_many :birthday_events, ->(user) { where(starts_on: user.birthday) }, class_name: 'Event'
       #   end
       #
-      # Note: Joining, eager loading, and preloading of these associations is not possible.
-      # These operations happen before instance creation and the scope will be called with a +nil+ argument.
+      # Note: Joining and eager loading of these associations is not possible.
+      # These two operations happen before instance creation and the scope will be called with a +nil+ argument.
+      # It is allowed to be preloaded, but in the case that there's a different scope for each record,
+      # this will perform N+1 queries. (this is essentially the same as preloading polymorphic scopes).
       #
       # == Association callbacks
       #
@@ -1498,6 +1500,8 @@ module ActiveRecord
         #   if the record is invalid.
         # [reload_association]
         #   Returns the associated object, forcing a database read.
+        # [reset_association]
+        #   Unloads the associated object. The next access will query it from the database.
         #
         # === Example
         #
@@ -1508,6 +1512,7 @@ module ActiveRecord
         # * <tt>Account#create_beneficiary</tt> (similar to <tt>b = Beneficiary.new(account_id: id); b.save; b</tt>)
         # * <tt>Account#create_beneficiary!</tt> (similar to <tt>b = Beneficiary.new(account_id: id); b.save!; b</tt>)
         # * <tt>Account#reload_beneficiary</tt>
+        # * <tt>Account#reset_beneficiary</tt>
         #
         # === Scopes
         #
@@ -1601,6 +1606,12 @@ module ActiveRecord
         #
         #   Note that NestedAttributes::ClassMethods#accepts_nested_attributes_for sets
         #   <tt>:autosave</tt> to <tt>true</tt>.
+        # [:touch]
+        #   If true, the associated object will be touched (the +updated_at+ / +updated_on+ attributes set to current time)
+        #   when this record is either saved or destroyed. If you specify a symbol, that attribute
+        #   will be updated with the current time in addition to the +updated_at+ / +updated_on+ attribute.
+        #   Please note that no validation will be performed when touching, and only the +after_touch+,
+        #   +after_commit+, and +after_rollback+ callbacks will be executed.
         # [:inverse_of]
         #   Specifies the name of the #belongs_to association on the associated object
         #   that is the inverse of this #has_one association.
@@ -1661,6 +1672,8 @@ module ActiveRecord
         #   if the record is invalid.
         # [reload_association]
         #   Returns the associated object, forcing a database read.
+        # [reset_association]
+        #   Unloads the associated object. The next access will query it from the database.
         # [association_changed?]
         #   Returns true if a new associate object has been assigned and the next save will update the foreign key.
         # [association_previously_changed?]
@@ -1675,9 +1688,9 @@ module ActiveRecord
         # * <tt>Post#create_author</tt> (similar to <tt>post.author = Author.new; post.author.save; post.author</tt>)
         # * <tt>Post#create_author!</tt> (similar to <tt>post.author = Author.new; post.author.save!; post.author</tt>)
         # * <tt>Post#reload_author</tt>
+        # * <tt>Post#reset_author</tt>
         # * <tt>Post#author_changed?</tt>
         # * <tt>Post#author_previously_changed?</tt>
-        # The declaration can also include an +options+ hash to specialize the behavior of the association.
         #
         # === Scopes
         #
@@ -1691,6 +1704,8 @@ module ActiveRecord
         #   belongs_to :level, ->(game) { where("game_level > ?", game.current_level) }
         #
         # === Options
+        #
+        # The declaration can also include an +options+ hash to specialize the behavior of the association.
         #
         # [:class_name]
         #   Specify the class name of the association. Use it only if that name can't be inferred
@@ -1748,11 +1763,11 @@ module ActiveRecord
         #   Note that NestedAttributes::ClassMethods#accepts_nested_attributes_for
         #   sets <tt>:autosave</tt> to <tt>true</tt>.
         # [:touch]
-        #   If true, the associated object will be touched (the updated_at/on attributes set to current time)
+        #   If true, the associated object will be touched (the +updated_at+ / +updated_on+ attributes set to current time)
         #   when this record is either saved or destroyed. If you specify a symbol, that attribute
-        #   will be updated with the current time in addition to the updated_at/on attribute.
-        #   Please note that with touching no validation is performed and only the +after_touch+,
-        #   +after_commit+ and +after_rollback+ callbacks are executed.
+        #   will be updated with the current time in addition to the +updated_at+ / +updated_on+ attribute.
+        #   Please note that no validation will be performed when touching, and only the +after_touch+,
+        #   +after_commit+, and +after_rollback+ callbacks will be executed.
         # [:inverse_of]
         #   Specifies the name of the #has_one or #has_many association on the associated
         #   object that is the inverse of this #belongs_to association.

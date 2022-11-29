@@ -4,6 +4,7 @@ require "set"
 require "active_record/connection_adapters/sql_type_metadata"
 require "active_record/connection_adapters/abstract/schema_dumper"
 require "active_record/connection_adapters/abstract/schema_creation"
+require "active_support/concurrency/null_lock"
 require "active_support/concurrency/load_interlock_aware_monitor"
 require "arel/collectors/bind"
 require "arel/collectors/composite"
@@ -155,7 +156,7 @@ module ActiveRecord
         @idle_since = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         @visitor = arel_visitor
         @statements = build_statement_pool
-        @lock = ActiveSupport::Concurrency::LoadInterlockAwareMonitor.new
+        self.synchronized = false
 
         @prepared_statements = self.class.type_cast_config_to_boolean(
           @config.fetch(:prepared_statements) { default_prepared_statements }
@@ -169,6 +170,14 @@ module ActiveRecord
 
         @raw_connection_dirty = false
         @verified = false
+      end
+
+      def synchronized=(synchronized) # :nodoc:
+        @lock = if synchronized
+          ActiveSupport::Concurrency::LoadInterlockAwareMonitor.new
+        else
+          ActiveSupport::Concurrency::NullLock
+        end
       end
 
       EXCEPTION_NEVER = { Exception => :never }.freeze # :nodoc:
@@ -972,6 +981,7 @@ module ActiveRecord
               result
             rescue => original_exception
               translated_exception = translate_exception_class(original_exception, nil, nil)
+              invalidate_transaction(translated_exception)
               retry_deadline_exceeded = deadline && deadline < Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
               if !retry_deadline_exceeded && retries_available > 0
@@ -1005,6 +1015,13 @@ module ActiveRecord
 
         def retryable_connection_error?(exception)
           exception.is_a?(ConnectionNotEstablished) || exception.is_a?(ConnectionFailed)
+        end
+
+        def invalidate_transaction(exception)
+          return unless exception.is_a?(TransactionRollbackError)
+          return unless savepoint_errors_invalidate_transactions?
+
+          current_transaction.invalidate!
         end
 
         def retryable_query_error?(exception)

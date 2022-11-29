@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "active_support/core_ext/object/duplicable"
+require "active_support/core_ext/array/extract"
 
 module ActiveSupport
   # +ParameterFilter+ allows you to specify keys for sensitive data from
@@ -32,6 +33,34 @@ module ActiveSupport
   class ParameterFilter
     FILTERED = "[FILTERED]" # :nodoc:
 
+    # Precompiles an array of filters that otherwise would be passed directly to
+    # #initialize. Depending on the quantity and types of filters,
+    # precompilation can improve filtering performance, especially in the case
+    # where the ParameterFilter instance itself cannot be retained (but the
+    # precompiled filters can be retained).
+    #
+    #   filters = [/foo/, :bar, "nested.baz", /nested\.qux/]
+    #
+    #   precompiled = ActiveSupport::ParameterFilter.precompile_filters(filters)
+    #   # => [/(?-mix:foo)|(?i:bar)/, /(?i:nested\.baz)|(?-mix:nested\.qux)/]
+    #
+    #   ActiveSupport::ParameterFilter.new(precompiled)
+    #
+    def self.precompile_filters(filters)
+      filters, patterns = filters.partition { |filter| filter.is_a?(Proc) }
+
+      patterns.map! do |pattern|
+        pattern.is_a?(Regexp) ? pattern : "(?i:#{Regexp.escape pattern.to_s})"
+      end
+
+      deep_patterns = patterns.extract! { |pattern| pattern.to_s.include?("\\.") }
+
+      filters << Regexp.new(patterns.join("|")) if patterns.any?
+      filters << Regexp.new(deep_patterns.join("|")) if deep_patterns.any?
+
+      filters
+    end
+
     # Create instance with given filters. Supported type of filters are +String+, +Regexp+, and +Proc+.
     # Other types of filters are treated as +String+ using +to_s+.
     # For +Proc+ filters, key, value, and optional original hash is passed to block arguments.
@@ -40,99 +69,83 @@ module ActiveSupport
     #
     # * <tt>:mask</tt> - A replaced object when filtered. Defaults to <tt>"[FILTERED]"</tt>.
     def initialize(filters = [], mask: FILTERED)
-      @filters = filters
       @mask = mask
+      compile_filters!(filters)
     end
 
     # Mask value of +params+ if key matches one of filters.
     def filter(params)
-      compiled_filter.call(params)
+      @no_filters ? params.dup : call(params)
     end
 
     # Returns filtered value for given key. For +Proc+ filters, third block argument is not populated.
     def filter_param(key, value)
-      @filters.empty? ? value : compiled_filter.value_for_key(key, value)
+      @no_filters ? value : value_for_key(key, value)
     end
 
   private
-    def compiled_filter
-      @compiled_filter ||= CompiledFilter.compile(@filters, mask: @mask)
-    end
+    def compile_filters!(filters)
+      @no_filters = filters.empty?
+      return if @no_filters
 
-    class CompiledFilter # :nodoc:
-      def self.compile(filters, mask:)
-        return lambda { |params| params.dup } if filters.empty?
+      @regexps, strings = [], []
+      @deep_regexps, deep_strings = nil, nil
+      @blocks = nil
 
-        strings, regexps, blocks, deep_regexps, deep_strings = [], [], [], nil, nil
-
-        filters.each do |item|
-          case item
-          when Proc
-            blocks << item
-          when Regexp
-            if item.to_s.include?("\\.")
-              (deep_regexps ||= []) << item
-            else
-              regexps << item
-            end
+      filters.each do |item|
+        case item
+        when Proc
+          (@blocks ||= []) << item
+        when Regexp
+          if item.to_s.include?("\\.")
+            (@deep_regexps ||= []) << item
           else
-            s = Regexp.escape(item.to_s)
-            if s.include?("\\.")
-              (deep_strings ||= []) << s
-            else
-              strings << s
-            end
+            @regexps << item
+          end
+        else
+          s = Regexp.escape(item.to_s)
+          if s.include?("\\.")
+            (deep_strings ||= []) << s
+          else
+            strings << s
           end
         end
-
-        regexps << Regexp.new(strings.join("|"), true) unless strings.empty?
-        (deep_regexps ||= []) << Regexp.new(deep_strings.join("|"), true) if deep_strings&.any?
-
-        new regexps, deep_regexps, blocks, mask: mask
       end
 
-      attr_reader :regexps, :deep_regexps, :blocks
+      @regexps << Regexp.new(strings.join("|"), true) unless strings.empty?
+      (@deep_regexps ||= []) << Regexp.new(deep_strings.join("|"), true) if deep_strings
+    end
 
-      def initialize(regexps, deep_regexps, blocks, mask:)
-        @regexps = regexps
-        @deep_regexps = deep_regexps&.any? ? deep_regexps : nil
-        @blocks = blocks
-        @mask = mask
+    def call(params, full_parent_key = nil, original_params = params)
+      filtered_params = params.class.new
+
+      params.each do |key, value|
+        filtered_params[key] = value_for_key(key, value, full_parent_key, original_params)
       end
 
-      def call(params, parents = [], original_params = params)
-        filtered_params = params.class.new
+      filtered_params
+    end
 
-        params.each do |key, value|
-          filtered_params[key] = value_for_key(key, value, parents, original_params)
-        end
-
-        filtered_params
+    def value_for_key(key, value, full_parent_key = nil, original_params = nil)
+      if @deep_regexps
+        full_key = full_parent_key ? "#{full_parent_key}.#{key}" : key.to_s
       end
 
-      def value_for_key(key, value, parents = [], original_params = nil)
-        parents.push(key) if deep_regexps
-        if regexps.any? { |r| r.match?(key.to_s) }
-          value = @mask
-        elsif deep_regexps && (joined = parents.join(".")) && deep_regexps.any? { |r| r.match?(joined) }
-          value = @mask
-        elsif value.is_a?(Hash)
-          value = call(value, parents, original_params)
-        elsif value.is_a?(Array)
-          # If we don't pop the current parent it will be duplicated as we
-          # process each array value.
-          parents.pop if deep_regexps
-          value = value.map { |v| value_for_key(key, v, parents, original_params) }
-          # Restore the parent stack after processing the array.
-          parents.push(key) if deep_regexps
-        elsif blocks.any?
-          key = key.dup if key.duplicable?
-          value = value.dup if value.duplicable?
-          blocks.each { |b| b.arity == 2 ? b.call(key, value) : b.call(key, value, original_params) }
-        end
-        parents.pop if deep_regexps
-        value
+      if @regexps.any? { |r| r.match?(key.to_s) }
+        value = @mask
+      elsif @deep_regexps&.any? { |r| r.match?(full_key) }
+        value = @mask
+      elsif value.is_a?(Hash)
+        value = call(value, full_key, original_params)
+      elsif value.is_a?(Array)
+        value = value.map { |v| value_for_key(key, v, full_parent_key, original_params) }
+      elsif @blocks
+        key = key.dup if key.duplicable?
+        value = value.dup if value.duplicable?
+        @blocks.each { |b| b.arity == 2 ? b.call(key, value) : b.call(key, value, original_params) }
       end
+
+      value
     end
   end
 end

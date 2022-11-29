@@ -455,13 +455,15 @@ class OptimisticLockingTest < ActiveRecord::TestCase
   end
 
   def test_readonly_attributes
-    assert_equal Set.new([ "name" ]), ReadonlyNameShip.readonly_attributes
+    assert_equal [ "name" ], ReadonlyNameShip.readonly_attributes
 
     s = ReadonlyNameShip.create(name: "unchangeable name")
     s.reload
     assert_equal "unchangeable name", s.name
 
-    s.update(name: "changed name")
+    assert_raises(ActiveRecord::ReadonlyAttributeError) do
+      s.update(name: "changed name")
+    end
     s.reload
     assert_equal "unchangeable name", s.name
   end
@@ -716,7 +718,7 @@ unless in_memory_db?
       assert_nothing_raised do
         frog = ::Frog.create(name: "Old Frog")
         frog.name = "New Frog"
-        assert_not_deprecated do
+        assert_not_deprecated(ActiveRecord.deprecator) do
           frog.save!
         end
       end
