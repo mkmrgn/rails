@@ -1,74 +1,46 @@
 # frozen_string_literal: true
 
 require "generators/generators_test_helper"
-require "rails/generators/rails/benchmark/benchmark_generator"
+require "rails/generators/rails/helper/helper_generator"
 
-module Rails
-  module Generators
-    class BenchmarkGeneratorTest < Rails::Generators::TestCase
-      include GeneratorsTestHelper
+ObjectHelper = Class.new
+AnotherObjectHelperTest = Class.new
 
-      setup do
-        copy_gemfile
-      end
+class HelperGeneratorTest < Rails::Generators::TestCase
+  include GeneratorsTestHelper
+  arguments %w(admin)
 
-      test "generate benchmark" do
-        run_generator ["my_benchmark"]
+  def test_helper_skeleton_is_created
+    run_generator
+    assert_file "app/helpers/admin_helper.rb", /module AdminHelper/
+  end
 
-        assert_file("Gemfile") do |content|
-          assert_match "gem \"benchmark-ips\"", content
-        end
+  def test_check_class_collision
+    content = capture(:stderr) { run_generator ["object"] }
+    assert_match(/The name 'ObjectHelper' is either already used in your application or reserved/, content)
+  end
 
-        assert_file("script/benchmarks/my_benchmark.rb") do |content|
-          assert_equal <<~RUBY, content
-            # frozen_string_literal: true
-            require_relative "../../config/environment"
-            # Any benchmarking setup goes here...
-            Benchmark.ips do |x|
-              x.report("before") { }
-              x.report("after") { }
-              x.compare!
-            end
-          RUBY
-        end
-      end
+  def test_namespaced_and_not_namespaced_helpers
+    run_generator ["products"]
 
-      test "generate benchmark with no name" do
-        output = capture(:stderr) do
-          run_generator []
-        end
+    # We have to require the generated helper to show the problem because
+    # the test helpers just check for generated files and contents but
+    # do not actually load them. But they have to be loaded (as in a real environment)
+    # to make the second generator run fail
+    require "#{destination_root}/app/helpers/products_helper"
 
-        assert_equal <<~MSG, output
-          No value provided for required arguments 'name'
-        MSG
-      end
-
-      test "generate benchmark with reports" do
-        run_generator ["my_benchmark", "with_patch", "without_patch"]
-
-        assert_file("script/benchmarks/my_benchmark.rb") do |content|
-          assert_equal <<~RUBY, content
-            # frozen_string_literal: true
-            require_relative "../../config/environment"
-            # Any benchmarking setup goes here...
-            Benchmark.ips do |x|
-              x.report("with_patch") { }
-              x.report("without_patch") { }
-              x.compare!
-            end
-          RUBY
-        end
-      end
-
-      test "generate benchmark twice only adds ips gem once" do
-        run_generator ["my_benchmark"]
-        run_generator ["my_benchmark"]
-
-        assert_file("Gemfile") do |content|
-          occurrences = content.scan("gem \"benchmark-ips\"").count
-          assert_equal 1, occurrences, "Should only have benchmark-ips present once"
-        end
-      end
+    assert_nothing_raised do
+      run_generator ["admin::products"]
+    ensure
+      # cleanup
+      Object.send(:remove_const, :ProductsHelper)
     end
+  end
+
+  def test_helper_suffix_is_not_duplicated
+    run_generator %w(products_helper)
+
+    assert_no_file "app/helpers/products_helper_helper.rb"
+    assert_file "app/helpers/products_helper.rb"
   end
 end
