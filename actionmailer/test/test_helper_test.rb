@@ -3,9 +3,6 @@
 require "abstract_unit"
 require "active_support/testing/stream"
 
-require "buildkite/test_collector"
-Buildkite::TestCollector.configure(hook: :minitest)
-
 class TestHelperMailer < ActionMailer::Base
   def test
     @world = "Earth"

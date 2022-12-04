@@ -157,9 +157,6 @@ GEM
     bootsnap (1.9.3)
       msgpack (~> 1.0)
     builder (3.2.4)
-    buildkite-test_collector (1.3.0)
-      activesupport (>= 4.2)
-      websocket (~> 1.2)
     bunny (2.19.0)
       amq-protocol (~> 2.3, >= 2.3.1)
       sorted_set (~> 1, >= 1.0.2)
@@ -578,7 +575,6 @@ DEPENDENCIES
   benchmark-ips
   blade
   bootsnap (>= 1.4.4)
-  buildkite-test_collector
   capybara (>= 3.26)
   cgi (>= 0.3.6)
   connection_pool
