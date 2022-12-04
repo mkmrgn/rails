@@ -1,338 +1,200 @@
 # frozen_string_literal: true
 
 require "isolation/abstract_unit"
+require "rack/test"
 
 module ApplicationTests
-  class TestTest < ActiveSupport::TestCase
+  class QueryLogsTest < ActiveSupport::TestCase
     include ActiveSupport::Testing::Isolation
+    include Rack::Test::Methods
 
     def setup
-      @old = ENV["PARALLEL_WORKERS"]
-      ENV["PARALLEL_WORKERS"] = "0"
-
       build_app
+      app_file "app/models/user.rb", <<-RUBY
+        class User < ActiveRecord::Base
+        end
+      RUBY
+
+      app_file "app/controllers/users_controller.rb", <<-RUBY
+        class UsersController < ApplicationController
+          def index
+            render inline: ActiveRecord::QueryLogs.call("")
+          end
+          def dynamic_content
+            Time.now.to_f.to_s
+          end
+        end
+      RUBY
+
+      app_file "app/jobs/user_job.rb", <<-RUBY
+        class UserJob < ActiveJob::Base
+          def perform
+            ActiveRecord::QueryLogs.call("")
+          end
+          def dynamic_content
+            Time.now.to_f.to_s
+          end
+        end
+      RUBY
+
+      app_file "config/routes.rb", <<-RUBY
+        Rails.application.routes.draw do
+          get "/", to: "users#index"
+        end
+      RUBY
     end
 
     def teardown
-      ENV["PARALLEL_WORKERS"] = @old
-
       teardown_app
     end
 
-    test "simple successful test" do
-      app_file "test/unit/foo_test.rb", <<-RUBY
-        require "test_helper"
-
-        class FooTest < ActiveSupport::TestCase
-          def test_truth
-            assert true
-          end
-        end
-      RUBY
-
-      assert_successful_test_run "unit/foo_test.rb"
+    def app
+      @app ||= Rails.application
     end
 
-    test "after_run" do
-      app_file "test/unit/foo_test.rb", <<-RUBY
-        require "test_helper"
+    test "does not modify the query execution path by default" do
+      boot_app
 
-        Minitest.after_run { puts "WORLD" }
-        Minitest.after_run { puts "HELLO" }
-
-        class FooTest < ActiveSupport::TestCase
-          def test_truth
-            assert true
-          end
-        end
-      RUBY
-
-      result = assert_successful_test_run "unit/foo_test.rb"
-      assert_equal ["HELLO", "WORLD"], result.scan(/HELLO|WORLD/) # only once and in correct order
+      assert_not_includes ActiveRecord.query_transformers, ActiveRecord::QueryLogs
     end
 
-    test "simple failed test" do
-      app_file "test/unit/foo_test.rb", <<-RUBY
-        require "test_helper"
+    test "prepends the query execution path when enabled" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
 
-        class FooTest < ActiveSupport::TestCase
-          def test_truth
-            assert false
-          end
-        end
-      RUBY
+      boot_app
 
-      assert_unsuccessful_run "unit/foo_test.rb", "Failure:\nFooTest#test_truth"
+      assert_includes ActiveRecord.query_transformers, ActiveRecord::QueryLogs
     end
 
-    test "integration test" do
-      controller "posts", <<-RUBY
-        class PostsController < ActionController::Base
-        end
-      RUBY
+    test "controller and job tags are defined by default" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
 
-      app_file "app/views/posts/index.html.erb", <<-HTML
-        Posts#index
-      HTML
+      boot_app
 
-      app_file "test/integration/posts_test.rb", <<-RUBY
-        require "test_helper"
-
-        class PostsTest < ActionDispatch::IntegrationTest
-          def test_index
-            get '/posts'
-            assert_response :success
-            assert_includes @response.body, 'Posts#index'
-          end
-        end
-      RUBY
-
-      assert_successful_test_run "integration/posts_test.rb"
+      assert_equal ActiveRecord::QueryLogs.tags, [ :application, :controller, :action, :job ]
     end
 
-    test "enable full backtraces on test failures" do
-      app_file "test/unit/failing_test.rb", <<-RUBY
-        require "test_helper"
+    test "controller actions have tagging filters enabled by default" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
+      add_to_config "config.active_record.query_log_tags_format = :legacy"
 
-        class FailingTest < ActiveSupport::TestCase
-          def test_failure
-            raise "fail"
-          end
-        end
-      RUBY
+      boot_app
 
-      output = run_test_file("unit/failing_test.rb")
-      assert_match %r{test/unit/failing_test\.rb}, output
-      assert_match %r{test/unit/failing_test\.rb:4}, output
+      get "/"
+      comment = last_response.body.strip
+
+      assert_includes comment, "controller:users"
     end
 
-    test "ruby schema migrations" do
-      output  = rails("generate", "model", "user", "name:string")
-      version = output.match(/(\d+)_create_users\.rb/)[1]
+    test "sqlcommenter formatting works when specified" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
+      add_to_config "config.active_record.query_log_tags_format = :sqlcommenter"
 
-      app_file "test/models/user_test.rb", <<-RUBY
-        require "test_helper"
+      add_to_config "config.active_record.query_log_tags = [ :pid ]"
 
-        class UserTest < ActiveSupport::TestCase
-          test "user" do
-            User.create! name: "Jon"
-          end
-        end
-      RUBY
-      app_file "db/schema.rb", ""
+      boot_app
 
-      assert_unsuccessful_run "models/user_test.rb", "Migrations are pending"
+      get "/"
+      comment = last_response.body.strip
 
-      app_file "db/schema.rb", <<-RUBY
-        ActiveRecord::Schema.define(version: #{version}) do
-          create_table :users do |t|
-            t.string :name
-          end
-        end
-      RUBY
-
-      app_file "config/initializers/disable_maintain_test_schema.rb", <<-RUBY
-        Rails.application.config.active_record.maintain_test_schema = false
-      RUBY
-
-      assert_unsuccessful_run "models/user_test.rb", "Could not find table 'users'"
-
-      File.delete "#{app_path}/config/initializers/disable_maintain_test_schema.rb"
-
-      result = assert_successful_test_run("models/user_test.rb")
-      assert_not_includes result, "create_table(:users)"
+      assert_match(/pid='\d+'/, comment)
+      assert_includes comment, "controller='users'"
     end
 
-    test "sql structure migrations" do
-      output  = rails("generate", "model", "user", "name:string")
-      version = output.match(/(\d+)_create_users\.rb/)[1]
+    test "controller actions tagging filters can be disabled" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
+      add_to_config "config.action_controller.log_query_tags_around_actions = false"
 
-      app_file "test/models/user_test.rb", <<-RUBY
-        require "test_helper"
+      boot_app
 
-        class UserTest < ActiveSupport::TestCase
-          test "user" do
-            User.create! name: "Jon"
-          end
-        end
-      RUBY
+      get "/"
+      comment = last_response.body.strip
 
-      app_file "db/structure.sql", ""
-      app_file "config/initializers/enable_sql_schema_format.rb", <<-RUBY
-        Rails.application.config.active_record.schema_format = :sql
-      RUBY
-
-      assert_unsuccessful_run "models/user_test.rb", "Migrations are pending"
-
-      app_file "db/structure.sql", <<-SQL
-        CREATE TABLE "schema_migrations" ("version" varchar(255) NOT NULL);
-        CREATE UNIQUE INDEX "unique_schema_migrations" ON "schema_migrations" ("version");
-        CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "name" varchar(255));
-        INSERT INTO schema_migrations (version) VALUES ('#{version}');
-      SQL
-
-      app_file "config/initializers/disable_maintain_test_schema.rb", <<-RUBY
-        Rails.application.config.active_record.maintain_test_schema = false
-      RUBY
-
-      assert_unsuccessful_run "models/user_test.rb", "Could not find table 'users'"
-
-      File.delete "#{app_path}/config/initializers/disable_maintain_test_schema.rb"
-
-      assert_successful_test_run("models/user_test.rb")
+      assert_not_includes comment, "controller:users"
     end
 
-    test "sql structure migrations when adding column to existing table" do
-      output_1  = rails("generate", "model", "user", "name:string")
-      version_1 = output_1.match(/(\d+)_create_users\.rb/)[1]
+    test "controller tags are not doubled up if already configured" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
+      add_to_config "config.active_record.query_log_tags = [ :action, :job, :controller, :pid ]"
 
-      app_file "test/models/user_test.rb", <<-RUBY
-        require "test_helper"
-        class UserTest < ActiveSupport::TestCase
-          test "user" do
-            User.create! name: "Jon"
-          end
-        end
-      RUBY
+      boot_app
 
-      app_file "config/initializers/enable_sql_schema_format.rb", <<-RUBY
-        Rails.application.config.active_record.schema_format = :sql
-      RUBY
+      get "/"
+      comment = last_response.body.strip
 
-      app_file "db/structure.sql", <<-SQL
-        CREATE TABLE "schema_migrations" ("version" varchar(255) NOT NULL);
-        CREATE UNIQUE INDEX "unique_schema_migrations" ON "schema_migrations" ("version");
-        CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "name" varchar(255));
-        INSERT INTO schema_migrations (version) VALUES ('#{version_1}');
-      SQL
-
-      assert_successful_test_run("models/user_test.rb")
-
-      output_2  = rails("generate", "migration", "add_email_to_users")
-      version_2 = output_2.match(/(\d+)_add_email_to_users\.rb/)[1]
-
-      app_file "test/models/user_test.rb", <<-RUBY
-        require "test_helper"
-
-        class UserTest < ActiveSupport::TestCase
-          test "user" do
-            User.create! name: "Jon", email: "jon@doe.com"
-          end
-        end
-      RUBY
-
-      app_file "db/structure.sql", <<-SQL
-        CREATE TABLE "schema_migrations" ("version" varchar(255) NOT NULL);
-        CREATE UNIQUE INDEX "unique_schema_migrations" ON "schema_migrations" ("version");
-        CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "name" varchar(255), "email" varchar(255));
-        INSERT INTO schema_migrations (version) VALUES ('#{version_1}');
-        INSERT INTO schema_migrations (version) VALUES ('#{version_2}');
-      SQL
-
-      assert_successful_test_run("models/user_test.rb")
+      assert_match(/\/\*action='index',controller='users',pid='\d+'\*\//, comment)
     end
 
-    test "automatically synchronizes test schema after rollback" do
-      output  = rails("generate", "model", "user", "name:string")
-      version = output.match(/(\d+)_create_users\.rb/)[1]
+    test "job perform method has tagging filters enabled by default" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
 
-      app_file "test/models/user_test.rb", <<-RUBY
-        require "test_helper"
+      boot_app
 
-        class UserTest < ActiveSupport::TestCase
-          test "user" do
-            assert_equal ["id", "name"], User.columns_hash.keys
-          end
-        end
-      RUBY
-      app_file "db/schema.rb", <<-RUBY
-        ActiveRecord::Schema.define(version: #{version}) do
-          create_table :users do |t|
-            t.string :name
-          end
-        end
-      RUBY
+      comment = UserJob.new.perform_now
 
-      assert_successful_test_run "models/user_test.rb"
-
-      # Simulate `db:rollback` + edit of the migration file + `db:migrate`
-      app_file "db/schema.rb", <<-RUBY
-        ActiveRecord::Schema.define(version: #{version}) do
-          create_table :users do |t|
-            t.string :name
-            t.integer :age
-          end
-        end
-      RUBY
-
-      assert_unsuccessful_run "models/user_test.rb", <<-ASSERTION
-Expected: ["id", "name"]
-  Actual: ["id", "name", "age"]
-      ASSERTION
+      assert_includes comment, "UserJob"
     end
 
-    test "hooks for plugins" do
-      output  = rails("generate", "model", "user", "name:string")
-      version = output.match(/(\d+)_create_users\.rb/)[1]
+    test "job perform method tagging filters can be disabled" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
+      add_to_config "config.active_job.log_query_tags_around_perform = false"
 
-      app_file "lib/tasks/hooks.rake", <<-RUBY
-        task :before_hook do
-          has_user_table = ActiveRecord::Base.connection.table_exists?('users')
-          puts "before: " + has_user_table.to_s
-        end
+      boot_app
 
-        task :after_hook do
-          has_user_table = ActiveRecord::Base.connection.table_exists?('users')
-          puts "after: " + has_user_table.to_s
-        end
+      comment = UserJob.new.perform_now
 
-        Rake::Task["db:test:prepare"].enhance [:before_hook] do
-          Rake::Task[:after_hook].invoke
-        end
-      RUBY
-      app_file "test/models/user_test.rb", <<-RUBY
-        require "test_helper"
-        class UserTest < ActiveSupport::TestCase
-          test "user" do
-            User.create! name: "Jon"
-          end
-        end
-      RUBY
+      assert_not_includes comment, "UserJob"
+    end
 
-      # Simulate `db:migrate`
-      app_file "db/schema.rb", <<-RUBY
-        ActiveRecord::Schema.define(version: #{version}) do
-          create_table :users do |t|
-            t.string :name
-          end
-        end
-      RUBY
+    test "job tags are not doubled up if already configured" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
+      add_to_config "config.active_record.query_log_tags = [ :action, :job, :controller, :pid ]"
 
-      output = assert_successful_test_run "models/user_test.rb"
-      assert_includes output, "before: false\nafter: true"
+      boot_app
 
-      # running tests again won't trigger a schema update
-      output = assert_successful_test_run "models/user_test.rb"
-      assert_not_includes output, "before:"
-      assert_not_includes output, "after:"
+      comment = UserJob.new.perform_now
+
+      assert_match(/\/\*job='UserJob',pid='\d+'\*\//, comment)
+    end
+
+    test "query cache is cleared between requests" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
+      add_to_config "config.active_record.cache_query_log_tags = true"
+      add_to_config "config.active_record.query_log_tags = [ { dynamic: ->(context) { context[:controller]&.dynamic_content } } ]"
+
+      boot_app
+
+      get "/"
+
+      first_tags = last_response.body
+
+      get "/"
+
+      second_tags = last_response.body
+
+      assert_not_equal first_tags, second_tags
+    end
+
+    test "query cache is cleared between job executions" do
+      add_to_config "config.active_record.query_log_tags_enabled = true"
+      add_to_config "config.active_record.cache_query_log_tags = true"
+      add_to_config "config.active_record.query_log_tags = [ { dynamic: ->(context) { context[:job]&.dynamic_content } } ]"
+
+      boot_app
+
+      first_tags = UserJob.new.perform_now
+      second_tags = UserJob.new.perform_now
+
+      assert_not_equal first_tags, second_tags
     end
 
     private
-      def assert_unsuccessful_run(name, message)
-        result = run_test_file(name)
-        assert_not_equal 0, $?.to_i
-        assert_includes result, message
-        result
-      end
+      def boot_app(env = "production")
+        ENV["RAILS_ENV"] = env
 
-      def assert_successful_test_run(name)
-        result = run_test_file(name)
-        assert_equal 0, $?.to_i, result
-        result
-      end
-
-      def run_test_file(name)
-        rails "test", "#{app_path}/test/#{name}", allow_failure: true
+        require "#{app_path}/config/environment"
+      ensure
+        ENV.delete "RAILS_ENV"
       end
   end
 end
