@@ -1,76 +1,77 @@
 # frozen_string_literal: true
 
 require "isolation/abstract_unit"
-require "env_helpers"
+require "console_helpers"
+require "rails/command"
+require "rails/commands/server/server_command"
 
 module ApplicationTests
-  class IntegrationTestCaseTest < ActiveSupport::TestCase
-    include ActiveSupport::Testing::Isolation, EnvHelpers
+  class ServerTest < ActiveSupport::TestCase
+    include ConsoleHelpers
 
-    setup do
+    def setup
       build_app
     end
 
-    teardown do
+    def teardown
       teardown_app
     end
 
-    test "resets Action Mailer test deliveries" do
-      rails "generate", "mailer", "BaseMailer", "welcome"
+    test "restart rails server with custom pid file path" do
+      skip "PTY unavailable" unless available_pty?
 
-      app_file "test/integration/mailer_integration_test.rb", <<-RUBY
-        require "test_helper"
+      File.open("#{app_path}/config/boot.rb", "w") do |f|
+        f.puts "ENV['BUNDLE_GEMFILE'] = '#{Bundler.default_gemfile}'"
+        f.puts 'require "bundler/setup"'
+      end
 
-        class MailerIntegrationTest < ActionDispatch::IntegrationTest
-          setup do
-            @old_delivery_method = ActionMailer::Base.delivery_method
-            ActionMailer::Base.delivery_method = :test
-          end
+      primary, replica = PTY.open
+      pid = nil
 
-          teardown do
-            ActionMailer::Base.delivery_method = @old_delivery_method
-          end
+      Bundler.with_original_env do
+        pid = Process.spawn("bin/rails server -b localhost -P tmp/dummy.pid", chdir: app_path, in: replica, out: replica, err: replica)
+        assert_output("Listening", primary)
 
-          2.times do |i|
-            define_method "test_resets_deliveries_\#{i}" do
-              BaseMailer.welcome.deliver_now
-              assert_equal 1, ActionMailer::Base.deliveries.count
-            end
-          end
+        rails("restart")
+
+        assert_output("Restarting", primary)
+        assert_output("Listening", primary)
+      ensure
+        kill(pid) if pid
+      end
+    end
+
+    test "run +server+ blocks after the server starts" do
+      skip "PTY unavailable" unless available_pty?
+
+      File.open("#{app_path}/config/boot.rb", "w") do |f|
+        f.puts "ENV['BUNDLE_GEMFILE'] = '#{Bundler.default_gemfile}'"
+        f.puts 'require "bundler/setup"'
+      end
+
+      add_to_config(<<~CODE)
+        server do
+          puts 'Hello world'
         end
-      RUBY
+      CODE
 
-      with_rails_env("test") { rails("db:migrate") }
-      output = rails("test")
-      assert_match(/0 failures, 0 errors/, output)
-    end
-  end
+      primary, replica = PTY.open
+      pid = nil
 
-  class IntegrationTestDefaultApp < ActiveSupport::TestCase
-    include ActiveSupport::Testing::Isolation, EnvHelpers
-
-    setup do
-      build_app
-    end
-
-    teardown do
-      teardown_app
+      Bundler.with_original_env do
+        pid = Process.spawn("bin/rails server -b localhost", chdir: app_path, in: replica, out: primary, err: replica)
+        assert_output("Hello world", primary)
+        assert_output("Listening", primary)
+      ensure
+        kill(pid) if pid
+      end
     end
 
-    test "app method of integration tests returns test_app by default" do
-      app_file "test/integration/default_app_test.rb", <<-RUBY
-        require "test_helper"
-
-        class DefaultAppIntegrationTest < ActionDispatch::IntegrationTest
-          def test_app_returns_action_dispatch_test_app_by_default
-            assert_equal ActionDispatch.test_app, app
-          end
-        end
-      RUBY
-
-      with_rails_env("test") { rails("db:migrate") }
-      output = rails("test")
-      assert_match(/0 failures, 0 errors/, output)
-    end
+    private
+      def kill(pid)
+        Process.kill("TERM", pid)
+        Process.wait(pid)
+      rescue Errno::ESRCH
+      end
   end
 end
