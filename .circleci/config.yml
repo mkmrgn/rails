@@ -23,6 +23,8 @@ jobs:
       - run:
           name: "Checkout second repo"
           command: "git clone git@github.com:mkmrgn/buildkite-config.git ~/project/.buildkite"
+      - setup_remote_docker:
+          version: 20.10.14
       - run:
           name: "Docker build"
           command: "docker-compose -f .buildkite/docker-compose.yml -p circletestbuild123 -f .buildkite/gha-docker-compose.yml build --pull base"
