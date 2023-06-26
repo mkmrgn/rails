@@ -1,0 +1,37 @@
+pipeline:
+  name: something
+  identifier: something
+  projectIdentifier: rails
+  orgIdentifier: default
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: gh
+        repoName: rails
+        build: <+input>
+  stages:
+    - stage:
+        name: build stuff
+        identifier: build_stuff
+        description: ""
+        type: CI
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: hello world
+                  identifier: hello_world
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: ubuntu
+                    shell: Sh
+                    command: echo "hello, world!"
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
